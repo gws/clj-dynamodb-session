@@ -8,5 +8,5 @@
   :dependencies [[com.taoensso/nippy "2.7.1"]
                  [org.clojure/clojure "1.6.0"]
                  [org.clojure/tools.logging "0.3.1"]
-                 [amazonica "0.3.4"]
+                 [amazonica "0.3.6"]
                  [ring/ring-core "1.3.2"]])
