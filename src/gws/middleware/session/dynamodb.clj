@@ -29,15 +29,16 @@
   SessionStore
 
   (read-session [store key]
-    (let [result (dynamodb/get-item options
-                                    :table-name table-name
-                                    :key {:id {:s key}}
-                                    :consistent-read true)
-          expires-at (get-in result [:item :expires_at])]
-      (when (and expires-at (.after (Date. (long expires-at)) (Date.)))
-        (let [data (get-in result [:item :data])]
-          (when (not (nil? data))
-            (nippy/thaw (.array ^Buffer data)))))))
+    (when (not (empty? key))
+      (let [result (dynamodb/get-item options
+                                      :table-name table-name
+                                      :key {:id {:s key}}
+                                      :consistent-read true)
+            expires-at (get-in result [:item :expires_at])]
+        (when (and expires-at (.after (Date. (long expires-at)) (Date.)))
+          (let [data (get-in result [:item :data])]
+            (when (not (nil? data))
+              (nippy/thaw (.array ^Buffer data))))))))
   (write-session [store key data]
     (let [key (or key (str (UUID/randomUUID)))
           item {:id key
