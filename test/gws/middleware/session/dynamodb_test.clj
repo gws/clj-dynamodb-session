@@ -10,7 +10,10 @@
    :vector [1 2 3 4 5 [6 7 8 [9 10]]]
    :vector-empty []})
 
-(def store (ddb/dynamodb-store))
+(def ^:private test-ddb-table-name
+  (str (java.util.UUID/randomUUID)))
+
+(def store (ddb/dynamodb-store {:table-name test-ddb-table-name}))
 
 (deftest create
   (is (instance? DynamoDBStore store)))
