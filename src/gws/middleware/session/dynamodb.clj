@@ -1,10 +1,12 @@
 (ns gws.middleware.session.dynamodb
   (:require [amazonica.aws.dynamodbv2 :as dynamodb]
             [clojure.tools.logging :as log]
-            [ring.middleware.session.store :refer [SessionStore]]
-            [taoensso.nippy :as nippy])
+            [cognitect.transit :as transit]
+            [ring.middleware.session.store :refer [SessionStore]])
   (:import [com.amazonaws.services.dynamodbv2.model ResourceInUseException
                                                     ResourceNotFoundException]
+           [java.io ByteArrayInputStream
+                    ByteArrayOutputStream]
            [java.nio Buffer]
            [java.util Date
                       UUID]))
@@ -36,19 +38,23 @@
                                       :consistent-read true)
             expires-at (get-in result [:item :expires_at])]
         (when (and expires-at (.after (Date. (long expires-at)) (Date.)))
-          (let [data (get-in result [:item :data])]
-            (when (not (nil? data))
-              (nippy/thaw (.array ^Buffer data))))))))
+          (when-let [^Buffer data (get-in result [:item :data])]
+            (let [reader (transit/reader (ByteArrayInputStream. (.array data))
+                                         :json)]
+              (transit/read reader)))))))
   (write-session [store key data]
     (let [key (or key (str (UUID/randomUUID)))
-          item {:id key
-                :data (nippy/freeze data)
-                :expires_at (+ (System/currentTimeMillis)
-                               (* session-timeout 1000))}]
-      (dynamodb/put-item options
-                         :table-name table-name
-                         :item item)
-      key))
+          out (ByteArrayOutputStream. 4096)
+          writer (transit/writer out :json)]
+      (transit/write writer data)
+      (let [item {:id key
+                  :data (.toByteArray out)
+                  :expires_at (+ (System/currentTimeMillis)
+                                 (* session-timeout 1000))}]
+        (dynamodb/put-item options
+                           :table-name table-name
+                           :item item)
+        key)))
   (delete-session [store key]
     (try
       (dynamodb/delete-item options
