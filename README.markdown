@@ -1,3 +1,6 @@
+[![Status of clj-dynamodb-session dependencies.](https://jarkeeper.com/gws/clj-dynamodb-session/status.svg)]
+(https://jarkeeper.com/gws/clj-dynamodb-session)
+
 # clj-dynamodb-session
 
 A [DynamoDB](http://aws.amazon.com/dynamodb/)-backed
