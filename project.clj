@@ -5,8 +5,9 @@
   :license {:name "Apache 2.0"
             :url "https://www.apache.org/licenses/LICENSE-2.0"}
   :profiles {:dev {:global-vars {*warn-on-reflection* true}}}
-  :dependencies [[amazonica "0.3.6"]
-                 [com.cognitect/transit-clj "0.8.259"]
+  :dependencies [[amazonica "0.3.19"]
+                 [cheshire "5.4.0"]
+                 [com.cognitect/transit-clj "0.8.269"]
                  [org.clojure/clojure "1.6.0"]
                  [org.clojure/tools.logging "0.3.1"]
                  [ring/ring-core "1.3.2"]])
