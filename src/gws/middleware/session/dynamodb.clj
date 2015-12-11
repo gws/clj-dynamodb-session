@@ -1,113 +1,122 @@
 (ns gws.middleware.session.dynamodb
-  (:require [amazonica.aws.dynamodbv2 :as dynamodb]
-            [cheshire.core :as json]
-            [clojure.tools.logging :as log]
+  (:require [clojure.tools.logging :as log]
             [cognitect.transit :as transit]
             [ring.middleware.session.store :refer [SessionStore]])
   (:import [com.amazonaws AmazonServiceException]
-           [com.amazonaws.services.dynamodbv2.model ResourceInUseException
+           [com.amazonaws.regions Region
+                                  Regions]
+           [com.amazonaws.services.dynamodbv2 AmazonDynamoDBClient]
+           [com.amazonaws.services.dynamodbv2.model AttributeValue
+                                                    AttributeDefinition
+                                                    CreateTableRequest
+                                                    GetItemRequest
+                                                    KeySchemaElement
+                                                    ProvisionedThroughput
+                                                    ResourceInUseException
                                                     ResourceNotFoundException]
            [java.io ByteArrayInputStream
                     ByteArrayOutputStream]
-           [java.nio Buffer]
+           [java.nio ByteBuffer]
+           [java.text SimpleDateFormat]
            [java.util Date
+                      TimeZone
                       UUID]))
 
-(def default-credentials
-  "Default credentials suitable for testing DynamoDB locally."
-  {:access-key "fill-me-in"
-   :secret-key "fill-me-in"
-   :endpoint "http://localhost:8000"})
+(defrecord Options [client endpoint table-name read-capacity-units
+                    write-capacity-units])
 
 (def default-options
   "Default options suitable for testing DynamoDB locally."
-  {:table-name "clj-dynamodb-sessions"
-   :session-timeout 600
+  {:client nil
+   :endpoint "http://localhost:8000"
+   :region nil
+   :table-name "clj-dynamodb-sessions"
    :read-capacity-units 5
    :write-capacity-units 5})
 
-(defn- aws-ex->map
-  "Pull important data out of an ASE into a map."
-  [^AmazonServiceException e]
-  {:aws-request-id (.getRequestId e)
-   :aws-service-name (.getServiceName e)
-   :aws-error-code (.getErrorCode e)
-   :aws-error-message (.getErrorMessage e)})
+(def ^java.text.DateFormat date-format
+  (doto (SimpleDateFormat. "yyyy-MM-dd'T'HH:mm:ss'Z'")
+        (.setTimeZone (TimeZone/getTimeZone "UTC"))))
 
 (defn- decode
-  "Decodes bytes from DynamoDB into a Clojure data structure."
-  [^Buffer data]
-  (let [r (transit/reader (ByteArrayInputStream. (.array data)) :json)]
-    (transit/read r)))
+  "Decodes a java.nio.ByteBuffer into a Clojure data structure."
+  [^ByteBuffer data]
+  (-> (ByteArrayInputStream. (.array data))
+      (transit/reader :msgpack)
+      (transit/read)))
 
 (defn- encode
-  "Encodes a Clojure data structure into a byte array."
-  ^bytes
+  "Encodes a Clojure data structure into a java.nio.ByteBuffer."
+  ^java.nio.ByteBuffer
   [data]
-  (let [baos (ByteArrayOutputStream. 4096)
-        w (transit/writer baos :json)]
-    (transit/write w data)
-    (.toByteArray baos)))
+  (let [baos (ByteArrayOutputStream. 4096)]
+    (transit/write (transit/writer baos :msgpack) data)
+    (ByteBuffer/wrap (.toByteArray baos))))
+
+(defn- region-from-string
+  "Returns a Region object given a string representation of an AWS region."
+  ^com.amazonaws.regions.Region
+  [region]
+  (Region/getRegion (Regions/fromName region)))
 
 (defn- create-session-table!
   "Create the DynamoDB table which will hold session data."
-  [creds table rcu wcu]
-  (dynamodb/create-table
-    creds
-    :table-name table
-    :key-schema [{:attribute-name "id" :key-type "HASH"}]
-    :attribute-definitions [{:attribute-name "id" :attribute-type "S"}]
-    :provisioned-throughput {:read-capacity-units rcu
-                             :write-capacity-units wcu}))
+  [^AmazonDynamoDBClient client options]
+  (let [request (CreateTableRequest.
+                  [(AttributeDefinition. "id" "S")]
+                  (:table-name options)
+                  [(KeySchemaElement. "id" "HASH")]
+                  (ProvisionedThroughput. (:read-capacity-units options)
+                                          (:write-capacity-units options)))]
+    (.createTable client request)))
 
-(deftype DynamoDBStore [credentials table-name session-timeout]
+(deftype DynamoDBStore [^AmazonDynamoDBClient client options]
   SessionStore
 
   (read-session [store key]
-    (when (seq key)
-      (let [result (dynamodb/get-item credentials
-                                      :table-name table-name
-                                      :key {:id {:s key}}
-                                      :consistent-read true)
-            expires-at (get-in result [:item :expires_at])]
-        (when (and expires-at (.after (Date. (long expires-at)) (Date.)))
-          (when-let [data (get-in result [:item :data])]
+    (when key
+      (let [item {"id" (.withS (AttributeValue.) key)}
+            request (-> (GetItemRequest. (:table-name options) item true)
+                        (.withExpressionAttributeNames {"#d" "data"})
+                        (.withProjectionExpression "#d"))
+            result (.getItem client request)]
+        (when-let [item (.getItem result)]
+          (when-let [data (.getB ^AttributeValue (get item "data"))]
             (decode data))))))
   (write-session [store key data]
-    (let [key (or key (str (UUID/randomUUID)))]
-      (let [item {:id key
-                  :data (encode data)
-                  :expires_at (+ (System/currentTimeMillis)
-                                 (* session-timeout 1000))}]
-        (dynamodb/put-item credentials
-                           :table-name table-name
-                           :item item)
-        key)))
+    (let [key (or key (str (UUID/randomUUID)))
+          now-str (.format date-format (Date.))
+          item {"id" (.withS (AttributeValue.) key)
+                "data" (.withB (AttributeValue.) (encode data))
+                "updated_at" (.withS (AttributeValue.) now-str)}]
+      (.putItem client (:table-name options) item)
+      key))
   (delete-session [store key]
-    (try
-      (dynamodb/delete-item credentials
-                            :table-name table-name
-                            :key {:id {:s key}})
-      (catch ResourceNotFoundException _ nil))
+    (when key
+      (let [item {"id" (.withS (AttributeValue.) key)}]
+        (try
+          (.deleteItem client (:table-name options) item)
+          (catch ResourceNotFoundException ^AmazonServiceException e
+            (log/debugf "Caught %s: %s" (type e) (.getErrorMessage e))
+            (log/trace e)))))
     nil))
 
 (defn dynamodb-store
   "Create a new DynamoDB session store implementing the SessionStore protocol.
 
-  See default-credentials and default-options for example options."
+  See default-options for example options."
   ([]
-   (dynamodb-store {} {}))
-  ([credentials]
-   (dynamodb-store credentials {}))
-  ([credentials options]
-   (let [creds (merge default-credentials credentials)
-         opts (merge default-options options)
-         table (:table-name opts)
-         rcu (:read-capacity-units opts)
-         wcu (:write-capacity-units opts)
-         timeout (:session-timeout opts)]
+   (dynamodb-store {}))
+  ([options]
+   (let [options (map->Options (merge default-options options))
+         client (or ^AmazonDynamoDBClient (:client options)
+                    (AmazonDynamoDBClient.))
+         client (if (:region options)
+                  (.withRegion client (region-from-string (:region options)))
+                  (.withEndpoint client (:endpoint options)))]
      (try
-       (create-session-table! creds table rcu wcu)
-       (catch ResourceInUseException e
-         (log/debug (json/generate-string (aws-ex->map e)))))
-     (DynamoDBStore. creds table timeout))))
+       (create-session-table! client options)
+       (catch ResourceInUseException ^AmazonServiceException e
+         (log/debugf "Caught %s: %s" (type e) (.getErrorMessage e))
+         (log/trace e)))
+     (DynamoDBStore. client options))))
