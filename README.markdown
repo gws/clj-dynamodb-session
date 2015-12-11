@@ -1,4 +1,7 @@
-[![Status of clj-dynamodb-session dependencies.](https://jarkeeper.com/gws/clj-dynamodb-session/status.svg)]
+[![Travis CI build status for clj-dynamodb-session](https://travis-ci.org/gws/clj-dynamodb-session.svg?branch=master)]
+(https://travis-ci.org/gws/clj-dynamodb-session)
+
+[![Jarkeeper dependency update status for clj-dynamodb-session](https://jarkeeper.com/gws/clj-dynamodb-session/status.svg)]
 (https://jarkeeper.com/gws/clj-dynamodb-session)
 
 # clj-dynamodb-session
