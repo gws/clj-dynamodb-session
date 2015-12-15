@@ -11,4 +11,4 @@
                  [ring/ring-core "1.4.0"]]
   :global-vars {*warn-on-reflection* true}
   :profiles {:dev {:dependencies [[org.clojure/clojure "1.8.0-RC3"]]
-                   :plugins [[jonase/eastwood "0.2.1"]]}})
+                   :plugins [[jonase/eastwood "0.2.3"]]}})
