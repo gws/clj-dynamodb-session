@@ -4,8 +4,8 @@
   :min-lein-version "2.0.0"
   :license {:name "Apache 2.0"
             :url "https://www.apache.org/licenses/LICENSE-2.0"}
-  :dependencies [[com.amazonaws/aws-java-sdk-core "1.11.3"]
-                 [com.amazonaws/aws-java-sdk-dynamodb "1.11.3"]
+  :dependencies [[com.amazonaws/aws-java-sdk-core "1.11.4"]
+                 [com.amazonaws/aws-java-sdk-dynamodb "1.11.4"]
                  [com.cognitect/transit-clj "0.8.285"]
                  [ring/ring-core "1.4.0"]]
   :global-vars {*warn-on-reflection* true}
