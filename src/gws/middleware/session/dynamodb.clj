@@ -13,8 +13,7 @@
 ; limitations under the License.
 
 (ns gws.middleware.session.dynamodb
-  (:require [clojure.tools.logging :as log]
-            [cognitect.transit :as transit]
+  (:require [cognitect.transit :as transit]
             [ring.middleware.session.store :refer [SessionStore]])
   (:import [com.amazonaws AmazonServiceException]
            [com.amazonaws.regions Region
@@ -25,9 +24,8 @@
                                                     CreateTableRequest
                                                     GetItemRequest
                                                     KeySchemaElement
-                                                    ProvisionedThroughput
-                                                    ResourceInUseException
-                                                    ResourceNotFoundException]
+                                                    ProvisionedThroughput]
+           [com.amazonaws.services.dynamodbv2.util TableUtils]
            [java.io ByteArrayInputStream
                     ByteArrayOutputStream]
            [java.nio ByteBuffer]
@@ -82,7 +80,8 @@
                   [(KeySchemaElement. "id" "HASH")]
                   (ProvisionedThroughput. (:read-capacity-units options)
                                           (:write-capacity-units options)))]
-    (.createTable client request)))
+    (let [_ (TableUtils/createTableIfNotExists client request)]
+      (TableUtils/waitUntilActive client (:table-name options)))))
 
 (deftype DynamoDBStore [^AmazonDynamoDBClient client options]
   SessionStore
@@ -108,12 +107,8 @@
   (delete-session [store key]
     (when key
       (let [item {"id" (.withS (AttributeValue.) key)}]
-        (try
-          (.deleteItem client (:table-name options) item)
-          (catch ResourceNotFoundException ^AmazonServiceException e
-            (log/debugf "Caught %s: %s" (type e) (.getErrorMessage e))
-            (log/trace e)))))
-    nil))
+        (.deleteItem client (:table-name options) item)
+        nil))))
 
 (defn dynamodb-client
   "Creates an AmazonDynamoDBClient from an options map."
