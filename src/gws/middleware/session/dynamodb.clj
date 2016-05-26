@@ -115,6 +115,17 @@
             (log/trace e)))))
     nil))
 
+(defn dynamodb-client
+  "Creates an AmazonDynamoDBClient from an options map."
+  ^com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient
+  [options]
+  (let [options (map->Options (merge default-options options))
+        client (or ^AmazonDynamoDBClient (:client options)
+                   (AmazonDynamoDBClient.))]
+    (if (:region options)
+      (.withRegion client (region-from-string (:region options)))
+      (.withEndpoint client (:endpoint options)))))
+
 (defn dynamodb-store
   "Create a new DynamoDB session store implementing the SessionStore protocol.
 
@@ -122,15 +133,6 @@
   ([]
    (dynamodb-store {}))
   ([options]
-   (let [options (map->Options (merge default-options options))
-         client (or ^AmazonDynamoDBClient (:client options)
-                    (AmazonDynamoDBClient.))
-         client (if (:region options)
-                  (.withRegion client (region-from-string (:region options)))
-                  (.withEndpoint client (:endpoint options)))]
-     (try
-       (create-session-table! client options)
-       (catch ResourceInUseException ^AmazonServiceException e
-         (log/debugf "Caught %s: %s" (type e) (.getErrorMessage e))
-         (log/trace e)))
+   (let [client (dynamodb-client options)]
+     (create-session-table! client options)
      (DynamoDBStore. client options))))
