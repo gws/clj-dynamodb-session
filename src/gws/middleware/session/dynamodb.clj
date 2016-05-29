@@ -34,7 +34,7 @@
                       TimeZone
                       UUID]))
 
-(defrecord Options [client endpoint table-name read-capacity-units
+(defrecord Options [client endpoint region table-name read-capacity-units
                     write-capacity-units])
 
 (def default-options
