@@ -128,6 +128,7 @@
   ([]
    (dynamodb-store {}))
   ([options]
-   (let [client (dynamodb-client options)]
+   (let [options (map->Options (merge default-options options))
+         client (dynamodb-client options)]
      (create-session-table! client options)
      (DynamoDBStore. client options))))
