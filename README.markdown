@@ -71,6 +71,15 @@ but that will not clean data out of DynamoDB. You may want to periodically purge
 old sessions based on the length of time you keep them using the `updated_at`
 field.
 
+## Testing
+
+Currently, running the tests requires a live DynamoDB instance and the default
+is to use the endpoint at `http://localhost:8000`. There is a
+`docker-compose.yml` included in the repository to make this easier.
+
+1. `docker-compose up` (requires `docker-compose` 1.6.0 or later)
+2. `lein test`
+
 ## License
 
 Copyright 2014 Gordon Stratton
