@@ -1,0 +1,6 @@
+version: "2"
+services:
+  dynamodb:
+    image: gordonstratton/dynamodb-local:latest
+    ports:
+      - "8000:8000"
