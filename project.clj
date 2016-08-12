@@ -9,5 +9,5 @@
                  [com.cognitect/transit-clj "0.8.285"]
                  [ring/ring-core "1.4.0"]]
   :global-vars {*warn-on-reflection* true}
-  :profiles {:dev {:dependencies [[org.clojure/clojure "1.8.0"]]
-                   :plugins [[jonase/eastwood "0.2.3"]]}})
+  :profiles {:dev {:plugins [[jonase/eastwood "0.2.3"]]}
+             :provided {:dependencies [[org.clojure/clojure "1.8.0"]]}})
