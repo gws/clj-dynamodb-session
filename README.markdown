@@ -1,9 +1,3 @@
-[![Travis CI build status for clj-dynamodb-session](https://travis-ci.org/gws/clj-dynamodb-session.svg?branch=master)]
-(https://travis-ci.org/gws/clj-dynamodb-session)
-
-[![Jarkeeper dependency update status for clj-dynamodb-session](https://jarkeeper.com/gws/clj-dynamodb-session/status.svg)]
-(https://jarkeeper.com/gws/clj-dynamodb-session)
-
 # clj-dynamodb-session
 
 A [DynamoDB](http://aws.amazon.com/dynamodb/)-backed
@@ -13,63 +7,134 @@ A [DynamoDB](http://aws.amazon.com/dynamodb/)-backed
 
 [![Clojars Project](https://clojars.org/gws/clj-dynamodb-session/latest-version.svg)](https://clojars.org/gws/clj-dynamodb-session)
 
-## Usage
+## Quick Start
+
+You will need:
+
+- A DynamoDB table with a `HASH` key but no `RANGE` key.
+- For the purposes of the quick start, the key should be named `id` (the
+  default), but this can be specified in the configuration, so you can call
+  yours anything you want.
+
+Require the library:
 
 ```clojure
 (ns your.app
   (:require [gws.middleware.session.dynamodb :as dynamodb]))
-
-;;; 1. Create the store.
-
-;; This will create a default store using a local endpoint, usually for testing.
-(def ddb-store (dynamodb/dynamodb-store))
-
-;; The above is equivalent to the following:
-;(def ddb-store
-;     (dynamodb/dynamodb-store {:client nil
-;                               :endpoint "http://localhost:8000"
-;                               :region nil
-;                               :table-name "clj-dynamodb-sessions"
-;                               :read-capacity-units 5
-;                               :write-capacity-units 5}))
-
-;; You can (and almost certainly will) override options such as the region and
-;; table name:
-;(def ddb-store
-;     (dynamodb/dynamodb-store {:region "us-west-2"
-;                               :table-name "my-app-sessions"}))
-
-;; NOTE: If you set `region`, it will be used *instead* of `endpoint`.
-
-;; You can even create your own Amazon DynamoDB client and pass it in as the
-;; value of the `:client` key.
-
-;;; 2. Pass the store to Ring.
-
-;; If you are using ring-defaults, it looks something like this:
-
-(def my-defaults
-  (-> secure-site-defaults
-      (assoc-in [:session :store] ddb-store)))
-
-;; Now, you will use `my-defaults` as you would in any other Ring application.
 ```
 
-## Data model
+Create the session store (if you are following along, make sure the region and
+table name match your own):
 
-There are 3 fields created in the DynamoDB table that you specify.
+```clojure
+(def session-store
+     (dynamodb/dynamodb-store {:region "us-west-2"
+                               :table-name "my-app-session"}))
+```
 
-- `id` (string): The session identifier.
-- `data` (bytes): The session data, encoded with Transit using msgpack.
-- `updated_at` (string): The timestamp of the last time the session was written,
-  in ISO-8601 format.
+Tell Ring to use your custom session store. If you are using
+[ring-defaults](https://github.com/ring-clojure/ring-defaults), you would do
+something like this:
 
-Eliminating old sessions, if desired, is left up to you. There are other
-middleware that can be used for session expiration, such as
-[ring-session-timeout](https://github.com/ring-clojure/ring-session-timeout),
-but that will not clean data out of DynamoDB. You may want to periodically purge
-old sessions based on the length of time you keep them using the `updated_at`
-field.
+```clojure
+(def my-defaults
+  (-> secure-site-defaults
+      (assoc-in [:session :store] session-store)))
+```
+
+## Configuration
+
+The configuration map you pass to `dynamodb-store` is merged into the default
+configuration map. An explanation of each key is below:
+
+### `:client`
+
+If you have a preconfigured Amazon DynamoDB client (using the Java SDK), you can
+pass it in here. If it is set, `:region` and `:endpoint` will be ignored, as the
+client is assumed to be configured.
+
+- Required: Yes (one of `:client`, `:endpoint`, or `:region` must be set)
+- Default: `nil`
+
+### `:region`
+
+This is the AWS region to use. If this is set, `:endpoint` will be ignored.
+
+- Required: Yes (one of `:client`, `:endpoint`, or `:region` must be set)
+- Default: `nil`
+
+### `:endpoint`
+
+This is the endpoint at which the DynamoDB service (or one just like it) will be
+located. This is useful for testing with the DynamoDB Local service. This will
+only be used if `:client` and `:region` are not set.
+
+- Required: Yes (one of `:client`, `:endpoint`, or `:region` must be set)
+- Default: `"http://localhost:8000"`
+
+### `:table-name`
+
+The name of the DynamoDB table.
+
+- Required: Yes
+- Default: `"clj-dynamodb-session"`
+
+### `:id-attribute-name`
+
+This is the name of the "primary key" (`HASH`) attribute on the table, and will
+contain the session key.
+
+- Required: Yes
+- Default: `"id"`
+
+### `:data-attribute-name`
+
+This is the name of the attribute that will contain the Transit-serialized
+session data.
+
+- Required: Yes
+- Default: `"data"`
+
+### `:custom-attributes`
+
+This will contain a map of attribute name to 1-arity function. The function will
+accept the (deserialized) session data as its argument, and return an
+[AttributeValue](http://docs.aws.amazon.com/AWSJavaSDK/latest/javadoc/com/amazonaws/services/dynamodbv2/model/AttributeValue.html)
+that will be placed into the session item at that attribute when the item is
+written to the table. This way, we can natively support any data type supported
+by DynamoDB.
+
+This is very useful if you, for example, want to add an application-specific
+user ID to the session item (maybe to implement per-user session revocation), or
+track the session "last-updated" date for a job to come along later and scan the
+table for old session data.
+
+- Required: Yes
+- Default: `nil`
+
+To write your own, you might do something like this:
+
+```clojure
+(ns my.app
+  (:import [com.amazonaws.services.dynamodbv2.model AttributeValue]))
+
+; Assume `data` contains `{:my.app/user-id "abc123"}`
+(defn session->user-id
+  [data]
+  ; By default, this constructor signature will use the `String` type for the
+  ; data. You can supply any type you want, using `.with{X}` or `.set{X}` on the
+  ; object constructed with the 0-arity constructor. See the docs linked above
+  ; for more detail.
+  (AttributeValue. ^String (:my.app/user-id data)))
+```
+
+Then, to use it, you would place the following entry in your DynamoDB session
+store options map:
+
+```clojure
+{... YOUR OTHER OPTIONS ...
+ :custom-attributes {"user_id" session->user-id}}
+```
 
 ## Testing
 
