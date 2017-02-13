@@ -15,8 +15,7 @@
 (ns gws.middleware.session.dynamodb
   (:require [cognitect.transit :as transit]
             [ring.middleware.session.store :refer [SessionStore]])
-  (:import [com.amazonaws.regions Region
-                                  Regions]
+  (:import [com.amazonaws.regions RegionUtils]
            [com.amazonaws.services.dynamodbv2 AmazonDynamoDBClient]
            [com.amazonaws.services.dynamodbv2.model AttributeValue
                                                     GetItemRequest]
@@ -99,9 +98,7 @@
     client
     (let [client (AmazonDynamoDBClient.)]
       (if (:region options)
-        (.withRegion client (-> (:region options)
-                                (Regions/fromName)
-                                (Region/getRegion)))
+        (.withRegion client (RegionUtils/getRegion (:region options)))
         (.withEndpoint client (:endpoint options))))))
 
 (defn dynamodb-store
