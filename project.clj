@@ -1,4 +1,4 @@
-(defproject gws/clj-dynamodb-session "0.6.0"
+(defproject gws/clj-dynamodb-session "0.7.0"
   :description "A DynamoDB-backed Ring session store"
   :url "https://gitlab.com/gws/clj-dynamodb-session"
   :min-lein-version "2.0.0"
