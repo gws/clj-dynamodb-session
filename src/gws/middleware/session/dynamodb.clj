@@ -15,14 +15,19 @@
 (ns gws.middleware.session.dynamodb
   (:require [cognitect.transit :as transit]
             [ring.middleware.session.store :refer [SessionStore]])
-  (:import [com.amazonaws.regions RegionUtils]
-           [com.amazonaws.services.dynamodbv2 AmazonDynamoDBClient]
-           [com.amazonaws.services.dynamodbv2.model AttributeValue
-                                                    GetItemRequest]
-           [java.io ByteArrayInputStream
-                    ByteArrayOutputStream]
-           [java.nio ByteBuffer]
-           [java.util UUID]))
+  (:import (com.amazonaws.client.builder
+            AwsClientBuilder$EndpointConfiguration)
+           (com.amazonaws.services.dynamodbv2
+            AmazonDynamoDB
+            AmazonDynamoDBClientBuilder)
+           (com.amazonaws.services.dynamodbv2.model
+            AttributeValue
+            GetItemRequest)
+           (java.io
+            ByteArrayInputStream
+            ByteArrayOutputStream)
+           (java.nio ByteBuffer)
+           (java.util UUID)))
 
 (def default-options
   "Default options for the DynamoDB store."
@@ -49,7 +54,7 @@
     (transit/write (transit/writer baos :msgpack) data)
     (ByteBuffer/wrap (.toByteArray baos))))
 
-(deftype DynamoDBStore [^AmazonDynamoDBClient client options]
+(deftype DynamoDBStore [^AmazonDynamoDB client options]
   SessionStore
 
   (read-session [store key]
@@ -93,13 +98,17 @@
 (defn dynamodb-client
   "Creates an AmazonDynamoDBClient from the session store options map."
   [options]
-  {:post [(instance? AmazonDynamoDBClient %)]}
+  {:post [(instance? AmazonDynamoDB %)]}
   (if-let [client (:client options)]
     client
-    (let [client (AmazonDynamoDBClient.)]
-      (if (:region options)
-        (.withRegion client (RegionUtils/getRegion (:region options)))
-        (.withEndpoint client (:endpoint options))))))
+    (let [builder (AmazonDynamoDBClientBuilder/standard)]
+      (if-let [region (:region options)]
+        (.setRegion builder ^String region)
+        (.setEndpointConfiguration builder
+         (AwsClientBuilder$EndpointConfiguration.
+          (:endpoint options)
+          "us-east-1")))
+      (.build builder))))
 
 (defn dynamodb-store
   "Create a new DynamoDB session store implementing the SessionStore protocol.
