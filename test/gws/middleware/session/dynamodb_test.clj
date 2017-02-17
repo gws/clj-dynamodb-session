@@ -40,7 +40,8 @@
                                   gen/symbol-ns gen/uuid])))
 
 (def ^:private test-table-name
-  "gws_middleware_session_dynamodb_test")
+  (str "gws_middleware_session_dynamodb_test_"
+       (UUID/randomUUID)))
 
 (def ^:private store-options
   (merge dynamodb/default-options
